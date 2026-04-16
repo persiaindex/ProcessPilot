@@ -37,6 +37,7 @@ class RequestSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
             "status",
+            "created_by",
             "ai_suggested_category",
             "processing_status",
             "created_at",
@@ -56,6 +57,13 @@ class RequestSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         instance = getattr(self, "instance", None)
+
+        if "status" in self.initial_data:
+            raise serializers.ValidationError(
+                {
+                    "status": "Status changes must use workflow action endpoints."
+                }
+            )
 
         if instance and instance.status in {
             Request.Status.APPROVED,
@@ -79,3 +87,8 @@ class RequestSerializer(serializers.ModelSerializer):
 
 class WorkflowActionSerializer(serializers.Serializer):
     note = serializers.CharField(required=False, allow_blank=True)
+
+
+class LoginSerializer(serializers.Serializer):
+    username = serializers.CharField()
+    password = serializers.CharField(write_only=True, trim_whitespace=False)

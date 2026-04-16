@@ -1,9 +1,12 @@
+from django.db.models import Q
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from .auth_utils import is_admin, is_reviewer
 from .models import Department, Request
+from .permissions import RequestPermission
 from .serializers import (
     DepartmentSerializer,
     RequestSerializer,
@@ -15,23 +18,34 @@ from .services import change_request_status
 class DepartmentViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Department.objects.all().order_by("name")
     serializer_class = DepartmentSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
 
 class RequestViewSet(viewsets.ModelViewSet):
     serializer_class = RequestSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [RequestPermission]
 
     def get_queryset(self):
-        return (
-            Request.objects.select_related(
-                "department",
-                "created_by",
-                "assigned_reviewer",
-            )
-            .all()
-            .order_by("-created_at")
-        )
+        queryset = Request.objects.select_related(
+            "department",
+            "created_by",
+            "assigned_reviewer",
+        ).order_by("-created_at")
+
+        user = self.request.user
+
+        if is_admin(user):
+            return queryset
+
+        if is_reviewer(user):
+            return queryset.filter(
+                Q(created_by=user) | Q(assigned_reviewer=user)
+            ).distinct()
+
+        return queryset.filter(created_by=user)
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
 
     @action(detail=True, methods=["post"])
     def submit(self, request, pk=None):
@@ -42,7 +56,7 @@ class RequestViewSet(viewsets.ModelViewSet):
         change_request_status(
             request_obj=request_obj,
             new_status=Request.Status.SUBMITTED,
-            changed_by=request.user if request.user.is_authenticated else None,
+            changed_by=request.user,
             note=serializer.validated_data.get("note", ""),
         )
 
@@ -63,7 +77,7 @@ class RequestViewSet(viewsets.ModelViewSet):
         change_request_status(
             request_obj=request_obj,
             new_status=Request.Status.IN_REVIEW,
-            changed_by=request.user if request.user.is_authenticated else None,
+            changed_by=request.user,
             note=serializer.validated_data.get("note", ""),
         )
 
@@ -84,7 +98,7 @@ class RequestViewSet(viewsets.ModelViewSet):
         change_request_status(
             request_obj=request_obj,
             new_status=Request.Status.APPROVED,
-            changed_by=request.user if request.user.is_authenticated else None,
+            changed_by=request.user,
             note=serializer.validated_data.get("note", ""),
         )
 
@@ -105,7 +119,7 @@ class RequestViewSet(viewsets.ModelViewSet):
         change_request_status(
             request_obj=request_obj,
             new_status=Request.Status.REJECTED,
-            changed_by=request.user if request.user.is_authenticated else None,
+            changed_by=request.user,
             note=serializer.validated_data.get("note", ""),
         )
 
