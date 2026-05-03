@@ -1,3 +1,6 @@
+## Project Status
+🚧 In progress
+
 # ProcessPilot
 
 ProcessPilot is an internal workflow app for process digitization and automation.
